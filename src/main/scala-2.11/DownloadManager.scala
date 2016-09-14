@@ -1,11 +1,8 @@
-import java.nio.file.Path
-
-import DownloadManager.Start
 import akka.actor.{Actor, ActorRef, Props}
 import akka.http.scaladsl.model.{HttpRequest, Uri}
 import akka.event.Logging
 
-class DownloadManager(vec: MergeVector[String])(writerActor: ActorRef) extends Actor {
+class DownloadManager(vec: MergeVector[(DirName.DirName, String)])(writerActor: ActorRef) extends Actor {
   import akka.actor.OneForOneStrategy
   import akka.actor.SupervisorStrategy._
   import scala.concurrent.duration._
@@ -14,13 +11,14 @@ class DownloadManager(vec: MergeVector[String])(writerActor: ActorRef) extends A
   var count = vec.size
 
   def process(): Unit = {
-    log.info("DownloadManager process")
+    log.info("[DownloadManager] process")
     for {
-      addr <- vec
+      (dirType, addr) <- vec
       worker = context.actorOf(DataDownloader.props(writerActor))
-    } worker ! PersistRequest(DirName.Page, HttpRequest(uri=Uri(addr)))
+    } worker ! PersistRequest(dirType, HttpRequest(uri=Uri(addr)))
   }
 
+  // FIXME Write correct failure handling strategy for childs
   override val supervisorStrategy =
     OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1 minute) {
       case _: ArithmeticException      => Resume
@@ -30,8 +28,8 @@ class DownloadManager(vec: MergeVector[String])(writerActor: ActorRef) extends A
     }
 
   def receive = {
-    case Start => {
-      log.info("DownloadManager start")
+    case DownloadManager.Start => {
+      log.info("[DownloadManager] start")
       process()
     }
     case response: PersistResponse => {
@@ -44,12 +42,17 @@ class DownloadManager(vec: MergeVector[String])(writerActor: ActorRef) extends A
         writerActor ! ResponseWriter.Flush
       }
     }
-    case _ => log.info("Other message get")
+    case ResponseWriter.Finish => {
+      // All job done, can terminate Actor System
+      log.info("[DownloadManager] ALL JOB DONE")
+      context.system.terminate()
+    }
+    case _ => log.info("[DownloadManager][FAILURE] Unexpected message received")
   }
 }
 
 object DownloadManager {
   case object Start
-  def props(vec: MergeVector[String])(implicit writeActor: ActorRef): Props =
+  def props(vec: MergeVector[(DirName.DirName, String)])(implicit writeActor: ActorRef): Props =
     Props(new DownloadManager(vec)(writeActor))
 }

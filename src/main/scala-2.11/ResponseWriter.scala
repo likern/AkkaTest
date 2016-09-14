@@ -1,7 +1,7 @@
 import java.io.FileWriter
 import java.nio.file.{FileAlreadyExistsException, Files, Path, Paths}
 
-import ResponseWriter.Flush
+import ResponseWriter.{Finish, Flush}
 import akka.actor.{Actor, ActorRef, Props}
 import akka.actor.Actor.Receive
 import akka.http.scaladsl.model.{HttpResponse, ResponseEntity}
@@ -37,18 +37,25 @@ class ResponseWriter(root: RootDir) extends Actor {
       log.info("[ResponseWriter] get command [Flush]")
       for {
         pair <- buffers
-      } flushToFile(pair)
+      } {
+        flushToFile(pair)
+        sender() ! Finish
+      }
     case _ => log.info("Get unexpected message in ResponseWriter")
   }
 
   private def flushToFile(pair: (DirName.DirName, ArrayBuffer[HttpResponse])) = {
-    val path = Helpers.append(root.get(pair._1), Helpers.getPathFromDate())
+    val path = FSUtils.append(root.get(pair._1), Helpers.getPathFromDate())
     Files.notExists(path) match {
       case true => Files.createDirectories(path)
       case false => ; // do nothing
     }
 
-    val newPath = Helpers.append(path, (fileName += 1) + ".data")
+    // FIXME For testing purposes we generate simple filenames
+    // FIXME path should be clean
+    fileName += 1
+    val newFileName = fileName.toString + ".data"
+    val newPath = FSUtils.append(path, newFileName)
     Files.notExists(newPath) match {
       case true => Files.createFile(newPath)
       case false => throw new FileAlreadyExistsException(s"File: ${newPath.toString}")
@@ -57,9 +64,9 @@ class ResponseWriter(root: RootDir) extends Actor {
     val fileWriter = new FileWriter(newPath.toFile, true)
     for {
       elem <- pair._2
-      content = pair._1.toString + elem.toString
     } {
-      fileWriter.write(content)
+      // FIXME Add async I/O file operations
+      fileWriter.write(elem.toString)
       fileWriter.write('\n')
     }
     fileWriter.close()
@@ -69,6 +76,7 @@ class ResponseWriter(root: RootDir) extends Actor {
 object ResponseWriter {
   // flush remaining existing HTTP responses
   case object Flush
+  case object Finish
   def props(implicit rootDir: RootDir): Props = Props(new ResponseWriter(rootDir))
 }
 

@@ -1,12 +1,13 @@
 /**
+  * Evenly iterate over different type links
   * Created by victor on 11.09.16.
   */
-case class MergeVector[T](image: Vector[T], data: Vector[T],
-                  video: Vector[T], page: Vector[T])
-  extends Iterable[T] {
-  override def iterator: Iterator[T] = new MergeIterator()
+case class MergeVector[Tuple2](image: Vector[Tuple2], data: Vector[Tuple2],
+                  video: Vector[Tuple2], page: Vector[Tuple2])
+  extends Iterable[Tuple2] {
+  override def iterator: Iterator[Tuple2] = new MergeIterator()
 
-  class MergeIterator extends Iterator[T] {
+  class MergeIterator extends Iterator[Tuple2] {
 
     var counter = 0
     val imageIterator = image.iterator
@@ -19,7 +20,7 @@ case class MergeVector[T](image: Vector[T], data: Vector[T],
         videoIterator.hasNext || pageIterator.hasNext
     }
 
-    override def next(): T = {
+    override def next(): Tuple2 = {
       val elem = counter % 4 match {
         case 0 =>
           if (imageIterator.hasNext) imageIterator.next()
